@@ -264,7 +264,7 @@ class MultiIndexedConvPCCCallback(LambdaCallback):
 		self.model.reset_metrics()
 		self.filename = None
 		inference = 0
-		mask_list = [0] * min(self.test_precision, self.model.precision, self.model.slices[-1])
+		mask_list = [0] * min(self.test_precision or self.model.precision, self.model.slices[-1])
 		max_point = 0
 		num_symbols = 0
 		acc = 0
