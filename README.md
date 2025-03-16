@@ -23,7 +23,7 @@ pip tensorflow-probability=0.15.0 tensorflow-compression=2.9.2
 
 ## Datasets
 
-
+Download and extract the [Semantic KITTI](https://semantic-kitti.org/) dataset to `./data/semantic-kitti/`.
 
 ## Usage
 
@@ -81,6 +81,23 @@ options:
                         verbose level (see tensorflow)
   --cpu                 Whether to allow cpu or (default) force gpu execution
   --checkpoint PATH     Load from checkpoint
+```
+
+### Run a Toy Example
+
+Run a Toy Example on `mini_index.txt` that contains one single point cloud sample and test the compression result on the very same sample.
+This command starts a training session of 10 epochs with 120 iterations each at a quantization precision of 12bits per dimension.
+Each iteration process one octree layer. Hance, 12 iterations are needed to process one sample.
+The model is configured to 3 sub-modules. Each sub-module is dedicated to 4 octree layers.
+
+- Sub-module 1 applies 4 convolutions and 1 fully-connected layer.
+- Sub-module 2 applies 8 convolutions and 2 fully-connected layers.
+- Sub-module 3 applies 12 convolutions and 3 fully-connected layers.
+
+This session allows to be run on CPU and uses an Arithmetic Range Coder implementation based on Numba.
+
+```
+python ./train_mic_pcc.py -X ./samples/mini_index.txt -T ./samples/mini_index.txt -P 12 -e 10 --steps_per_epoch 120 -S 0 4 8 12 -c 4 8 12 -n 1 2 3 --range_coder=nrc --cpu
 ```
 
 ## Citation

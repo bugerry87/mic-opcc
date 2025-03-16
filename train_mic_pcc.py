@@ -263,8 +263,8 @@ def init_main_args(parents=[]):
 		metavar='INT',
 		nargs='+',
 		type=int,
-		default=[1,6,12],
-		help="Strid step of each batch (default=[1,6,12])"
+		default=[1,1,1],
+		help="Strid step of each batch (default=[1,1,1])"
 		)
 	
 	main_args.add_argument(

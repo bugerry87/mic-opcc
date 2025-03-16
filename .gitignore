@@ -159,4 +159,5 @@ media/
 *.vs/
 *.vscode/
 
+#samples
 !samples/000000.bin
