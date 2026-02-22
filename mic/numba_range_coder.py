@@ -3,8 +3,8 @@ import numpy as np
 import numba as nb
 
 
-def prob2cdf(probs, precision=24, floor=0, dtype=np.int64):
-	total = (1<<precision) - 1
+def prob2cdf(probs, precision=62, floor=0, dtype=np.int64):
+	total = (1<<precision)-1
 	probs = np.array(probs, dtype=np.float64)
 	probs = np.clip(probs, floor, 1.0)
 	shape = [*probs.shape]

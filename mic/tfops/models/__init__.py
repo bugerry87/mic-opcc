@@ -1,8 +1,8 @@
 ## Inhire
-from .IndexedConvPCC import IndexedConvPCC
-from .MultiIndexedConvPCC import MultiIndexedConvPCC
+from .IndexedBeamConvPCC import IndexedBeamConvPCC
+from .MultiIndexedBeamConvPCC import MultiIndexedBeamConvPCC
 
 __all__ = [
-    IndexedConvPCC,
-    MultiIndexedConvPCC
+    IndexedBeamConvPCC,
+    MultiIndexedBeamConvPCC
 ]

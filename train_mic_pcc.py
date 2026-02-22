@@ -7,15 +7,18 @@ from argparse import ArgumentParser
 import logging
 
 ## Installed
+import numpy as np
 import tensorflow as tf
 from keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping, TerminateOnNaN
 from keras.metrics import CategoricalAccuracy
 from keras.losses import CategoricalCrossentropy
 from keras.optimizers import Adam
+from keras.optimizers.schedules.learning_rate_schedule import ExponentialDecay 
 
 ## Local
+from mic.tfops import bitops
 from mic.tfops import GPUs
-from mic.tfops.models import MultiIndexedConvPCC
+from mic.tfops.models import MultiIndexedBeamConvPCC
 from mic.tfops.callbacks import MultiIndexedConvPCCCallback, LogCallback
 
 
@@ -30,7 +33,7 @@ def init_main_args(parents=[]):
 		main_args: The ArgumentParsers.
 	"""
 	main_args = ArgumentParser(
-		description="MultiIndexedConvolutionPCC",
+		description="MultiIndexedTransposedConvolutionPCC",
 		conflict_handler='resolve',
 		parents=parents
 		)
@@ -83,6 +86,24 @@ def init_main_args(parents=[]):
 		)
 	
 	main_args.add_argument(
+		'--offset',
+		metavar='Float',
+		nargs='+',
+		type=float,
+		default=None,
+		help="Quantization offset"
+		)
+	
+	main_args.add_argument(
+		'--scale',
+		metavar='Float',
+		nargs='+',
+		type=float,
+		default=None,
+		help="Quantization scale"
+		)
+	
+	main_args.add_argument(
 		'--epochs', '-e',
 		metavar='INT',
 		type=int,
@@ -94,7 +115,7 @@ def init_main_args(parents=[]):
 		'--learning_rate',
 		metavar='Float',
 		type=float,
-		default=1e-4,
+		default=1e-3,
 		help="Learning rate for the Adam optimizer (default=1e-4)"
 		)
 	
@@ -177,14 +198,6 @@ def init_main_args(parents=[]):
 		)
 	
 	main_args.add_argument(
-		'--floor',
-		metavar='Float',
-		type=float,
-		default=1e-4,
-		help="Probability floor for range coder (default=1e-4)"
-		)
-	
-	main_args.add_argument(
 		'--shuffle',
 		metavar='INT',
 		type=int,
@@ -201,12 +214,49 @@ def init_main_args(parents=[]):
 		)
 	
 	main_args.add_argument(
+		'--tree_type', '-t',
+		metavar='INT',
+		type=int,
+		default=3,
+		help="Tree type: 1 = binary tree, 2 = quatree, 3 = octree"
+		)
+	
+	main_args.add_argument(
 		'--qmode', '-q',
 		metavar='STR',
 		type=str,
 		default='centered',
-		choices=['centered', 'cornered'],
+		choices=['centered', 'cornered', 'none'],
 		help="Quantization precision"
+		)
+	
+	main_args.add_argument(
+		'--derotate',
+		action='store_true',
+		help='Sort axis by major components'
+		)
+	
+	main_args.add_argument(
+		'--disolver',
+		action='store_true',
+		help='Run in disolver mode'
+		)
+	
+	main_args.add_argument(
+		'--rotate',
+		metavar='STR',
+		type=str,
+		default='',
+		help='Random rotation augmentation - use "xyz" (default="")'
+		)
+	
+	main_args.add_argument(
+		'--grouping', '-g',
+		metavar='STR',
+		type=str,
+		default='progressive',
+		choices=['none', 'sequential', 'progressive'],
+		help="Grouping strategy"
 		)
 	
 	main_args.add_argument(
@@ -214,16 +264,43 @@ def init_main_args(parents=[]):
 		metavar='INT',
 		nargs='+',
 		type=int,
-		default=[0,4,8,12],
+		default=[0,12],
 		help="Tree slices"
 		)
 	
 	main_args.add_argument(
-		'--kernels', '-k',
+		'--chunk', '-C',
 		metavar='INT',
 		type=int,
-		default=256,
+		default=1,
+		help="Chunk level"
+		)
+
+	main_args.add_argument(
+		'--kernels', '-k',
+		metavar='INT',
+		nargs='+',
+		type=int,
+		default=[32],
 		help='num of kernel units'
+		)
+	
+	main_args.add_argument(
+		'--windows', '-w',
+		metavar='INT',
+		nargs='+',
+		type=int,
+		default=[3],
+		help='window size'
+		)
+	
+	main_args.add_argument(
+		'--beam', '-b',
+		metavar='INT',
+		nargs='+',
+		type=int,
+		default=[1],
+		help='size of the beam search'
 		)
 	
 	main_args.add_argument(
@@ -231,23 +308,33 @@ def init_main_args(parents=[]):
 		metavar='INT',
 		nargs='+',
 		type=int,
-		default=[4,8,12],
+		default=[12],
 		help='number of convolution layers'
 		)
 	
 	main_args.add_argument(
-		'--heads', '-n',
+		'--head_size', '-n',
 		metavar='INT',
 		nargs='+',
 		type=int,
-		default=[1,2,3],
-		help='number of transformer heads'
+		default=[2],
+		help='the dense layer size after convolution'
 		)
 	
 	main_args.add_argument(
-		'--augmentation',
-		action='store_true',
-		help="Whether to apply data augmentation or (default) not"
+		'--salt',
+		metavar='FLOAT',
+		type=float,
+		default=0.0,
+		help="Ratio to add salt to data - adds random points (default=0.0)"
+		)
+	
+	main_args.add_argument(
+		'--pepper',
+		metavar='FLOAT',
+		type=float,
+		default=0.0,
+		help="Ratio to add pepper to data - removes random points (default=0.0)"
 		)
 	
 	main_args.add_argument(
@@ -259,19 +346,10 @@ def init_main_args(parents=[]):
 		)
 	
 	main_args.add_argument(
-		'--strides', '-s',
-		metavar='INT',
-		nargs='+',
-		type=int,
-		default=[1,1,1],
-		help="Strid step of each batch (default=[1,1,1])"
-		)
-	
-	main_args.add_argument(
 		'--seed',
 		metavar='INT',
 		type=int,
-		default=0,
+		default=1,
 		help='Initial model seed'
 		)
 	
@@ -291,6 +369,14 @@ def init_main_args(parents=[]):
 		)
 	
 	main_args.add_argument(
+		'--profiler',
+		metavar='INT',
+		type=int,
+		default=0,
+		help="Activate profiler per batch (default=0)"
+		)
+	
+	main_args.add_argument(
 		'--cpu',
 		action='store_true',
 		help="Whether to allow cpu or (default) force gpu execution"
@@ -300,6 +386,14 @@ def init_main_args(parents=[]):
 		'--checkpoint',
 		metavar='PATH',
 		help='Load from checkpoint'
+		)
+	
+	main_args.add_argument(
+		'--generate',
+		metavar='FLOAT',
+		type=float,
+		default=0.0,
+		help="Generate a confidence point cloud at the end (default=0.0)"
 		)
 	return main_args
 
@@ -312,7 +406,7 @@ def main(
 	xtype='float32',
 	xformat='raw',
 	epochs=1,
-	learning_rate=0.001,
+	learning_rate=1e-3,
 	monitor=None,
 	save_best_only=False,
 	stop_patience=-1,
@@ -323,22 +417,33 @@ def main(
 	test_steps=0,
 	test_precision=None,
 	range_coder='nrc',
-	floor=1e-4,
 	shuffle=0,
-	slices=[0,4,8,12],
+	slices=[0,12],
 	precision=12,
+	offset=None,
+	scale=None,
+	tree_type=3,
+	chunk=1,
 	qmode=0,
-	kernels=256,
-	convolutions=[4,8,12],
-	heads=[1,2,3],
-	augmentation=False,
+	derotate=False,
+	disolver=False,
+	rotate='',
+	grouping='progressive',
+	kernels=[32],
+	windows=[3],
+	beam=[1],
+	convolutions=[12],
+	head_size=[1],
+	salt=0.0,
+	pepper=0.0,
 	dropout=0.0,
-	strides=[1,6,12],
-	seed=0,
+	seed=1,
 	log_dir='logs',
 	verbose=2,
 	cpu=False,
 	checkpoint=None,
+	generate=0.0,
+	profiler=0,
 	log_params={},
 	**kwargs
 	):
@@ -348,6 +453,9 @@ def main(
 		assert len(GPUs) > 0
 		assert tf.test.is_built_with_cuda()
 	
+	os.environ['PYTHONHASHSEED']=str(seed)
+	os.environ['TF_CUDNN_DETERMINISTIC'] = str(seed)
+	np.random.seed(seed)
 	tf.random.set_seed(seed)
 	timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 	log_dir = os.path.join(log_dir, timestamp)
@@ -370,29 +478,39 @@ def main(
 	if checkpoint and checkpoint.endswith('tf'):
 		model = tf.keras.models.load_model(checkpoint)
 	else:
-		model = MultiIndexedConvPCC(
+		model = MultiIndexedBeamConvPCC(
 			kernels=kernels,
 			convolutions=convolutions,
-			heads=heads,
+			neck_length=head_size,
+			windows=windows,
 			precision=precision,
 			slices=slices,
-			strides=strides,
+			beam=beam,
+			tree_type=tree_type,
 			dropout=dropout,
 			**kwargs
 		)
 	
-	qmode = 0 if 'centered' else 1
+	qmode = bitops.QMODE[qmode]
 	meta_args = dict(
 		xshape=xshape,
 		xtype=xtype,
 		xformat=xformat,
 		qmode=qmode,
+		offset=offset,
+		scale=scale,
+		grouping=grouping,
+		derotate=derotate,
+		disolver=disolver,
 	)
 	
 	trainer, train_meta = model.trainer(train_index, 
 		take=steps_per_epoch,
 		shuffle=shuffle,
-		augmentation=augmentation,
+		rotate=rotate,
+		chunk=chunk,
+		salt=salt,
+		pepper=pepper,
 		**meta_args) if train_index else (None, None)
 	validator, val_meta = model.validator(val_index,
 		take=validation_steps,
@@ -401,32 +519,35 @@ def main(
 		take=test_steps,
 		precision=test_precision,
 		**meta_args) if test_index else (None, None)
-	master_meta = train_meta or val_meta or test_meta
-	auto_steps = master_meta.num_of_files * sum(
-		(e - b) * s
-		for b, e, s in zip(slices[:-1], slices[1:], strides)
-	)
-	steps_per_epoch = steps_per_epoch if steps_per_epoch else auto_steps
+	steps_per_epoch = train_meta.steps if train_meta else 0
+	validation_steps = val_meta.samples if val_meta else 0
+	test_steps = test_meta.samples if test_meta else 0
 
-	if master_meta is None:
+	if (train_meta or val_meta or test_meta) is None:
 		msg = "Main: No index file was set!"
 		tflog.error(msg)
 		raise ValueError(msg)
 	
 	loss = tuple(
 		CategoricalCrossentropy()
-		for _ in range(len(heads))
+		for _ in range(len(slices)-1)
 	)
 	metrics = (
 		CategoricalAccuracy('acc'),
-		#for i in range(len(heads))
 	)
 	
+	lrs = ExponentialDecay(
+		learning_rate,
+		steps_per_epoch or validation_steps or test_steps,
+		0.9,
+	)
+	optimizer = Adam(
+		learning_rate=lrs,
+		)
 	model.compile(
-		optimizer=Adam(learning_rate=learning_rate),
+		optimizer=optimizer,
 		loss=loss,
-		metrics=metrics,
-		#sample_weight_mode='temporal'
+		weighted_metrics=metrics,
 		)
 	model.build()
 	model.summary(print_fn=tflog.info)
@@ -436,7 +557,7 @@ def main(
 	tflog.info("Samples for Train: {}, Validation: {}, Test: {}".format(steps_per_epoch, validation_steps, test_steps))
 	
 	monitor = monitor or 'val_loss' if validator else 'loss'
-	tensorboard = TensorBoard(log_dir=log_dir)
+	tensorboard = TensorBoard(log_dir=log_dir, profile_batch=profiler)
 	callbacks = [
 		tensorboard,
 		ModelCheckpoint(
@@ -467,8 +588,6 @@ def main(
 			output=log_data,
 			verbose=verbose,
 			range_coder=range_coder,
-			floor=floor,
-			test_precision=test_precision,
 		)
 		callbacks.append(test_callback)
 	
@@ -483,6 +602,7 @@ def main(
 			callbacks=callbacks,
 			validation_freq=validation_freq,
 			validation_data=validator,
+			validation_steps=validation_steps,
 			verbose=verbose
 			)
 	elif validator is not None:
@@ -490,7 +610,7 @@ def main(
 			validator,
 			callbacks=callbacks,
 			verbose=verbose,
-			return_dict=True
+			return_dict=True,
 			)
 	elif tester is not None:
 		history = dict()
@@ -499,6 +619,10 @@ def main(
 		log_callback(history)
 	else:
 		raise RuntimeError("Unexpected Error!")
+	
+	if generate:
+		qpos = model.generate(generate)
+		qpos.numpy().tofile(os.path.join(log_dir, 'generated.pts.bin'))
 	
 	tflog.info('Done!')
 	return history

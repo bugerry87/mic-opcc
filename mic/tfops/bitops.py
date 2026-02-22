@@ -11,28 +11,40 @@ invert = tf.bitwise.invert
 
 QMODE_CENTERED = 0
 QMODE_CORNERED = 1
+QMODE_VALID = 2
 
+QMODE = {
+	'none': None,
+	'centered': QMODE_CENTERED,
+	'cornered': QMODE_CORNERED,
+	'valid': QMODE_VALID,
+}
 
 @tf.function(experimental_relax_shapes=True)
-def quantization(X, depth, mode=QMODE_CENTERED, dtype=tf.int64):
-	unit = tf.cast(1<<depth, X.dtype) - 1
-	offset = tf.reduce_min(X, axis=0)
-	scale = tf.reduce_max(X, axis=0) - offset
+def dimsort(X):
+	scale = tf.reduce_max(X, axis=0) - tf.reduce_min(X, axis=0)
 	dimsort = tf.argsort(scale, direction='DESCENDING')
-	scale = tf.reduce_max(scale)
-	offset = tf.gather(offset, dimsort)
 	X = tf.gather(X, dimsort, axis=-1)
 	dimsort = tf.argsort(dimsort)
+	return X, dimsort
+
+@tf.function(experimental_relax_shapes=True)
+def quantization(X, unit, offset=None, scale=None, mode=QMODE_CENTERED, dtype=tf.int64):
+	unit = tf.cast(unit, X.dtype) - 1
+	align = tf.reduce_min(X, axis=-2, keepdims=True)
+	edge = tf.reduce_max(X, axis=-2, keepdims=True) - align
+	max_edge = tf.reduce_max(edge, axis=[-2,-1], keepdims=True)
 
 	if mode == QMODE_CENTERED:
-		offset -= (scale - (tf.reduce_max(X, axis=0) - offset)) * 0.5
+		align -= (max_edge - edge) * 0.5
 
-	scale = unit / scale
+	scale = tf.math.divide_no_nan(unit, max_edge) if scale is None else scale
+	offset = align if offset is None else offset
 	X -= offset
 	X *= scale
 	X = tf.round(X)
 	X = tf.cast(X, dtype)
-	return X, offset, scale, dimsort
+	return X, offset, scale
 
 @tf.function(experimental_relax_shapes=True)
 def serialize(Q, depth):
@@ -44,12 +56,10 @@ def serialize(Q, depth):
 	Q = tf.reduce_sum(Q, axis=-2)
 	Q = left_shift(Q, shifts * dim)
 	Q = tf.reduce_sum(Q, axis=-1)
-	Q = tf.sort(Q)
-	Q, inv = tf.unique(Q)
-	return Q, inv
+	return Q
 
 @tf.function(experimental_relax_shapes=True)
-def realize(X, depth, dim, offset=0.0, scale=1.0, xtype=tf.float32):
+def realize(X, depth, dim=3, offset=0.0, scale=1.0, xtype=tf.float32):
 	one = tf.constant(1, dtype=X.dtype)
 	X = tf.reshape(X, [-1, 1])
 	X = right_shift(X, tf.range(depth * dim, dtype=X.dtype))
@@ -58,8 +68,8 @@ def realize(X, depth, dim, offset=0.0, scale=1.0, xtype=tf.float32):
 	X = left_shift(X, tf.range(depth, dtype=X.dtype)[...,None])
 	X = tf.reduce_sum(X, axis=-2)
 	X = tf.cast(X, xtype)
-	X /= scale
-	X += offset
+	X = tf.cast(X / scale, xtype)
+	X += tf.cast(offset, xtype)
 	return X
 
 
@@ -117,7 +127,7 @@ def encode(X, shift, dim=3, left_aligned=False):
 		if left_aligned:
 			uids = left_shift(uids, shift)
 		uids, inv = tf.unique(uids)
-		tokens = bitwise_and(right_shift(X, (shift - dim)), mask)
+		tokens = bitwise_and(right_shift(X, shift - dim), mask)
 		hist = tf.one_hot(tokens, tf.cast(bits, tf.int32), dtype=X.dtype)
 		hist = tf.math.unsorted_segment_sum(hist, inv, inv[-1] + 1)
 		symbols = tf.cast(hist > 0, X.dtype)

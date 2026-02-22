@@ -9,10 +9,10 @@ import os.path as path
 
 ## Installed
 import numpy as np
+from scipy.io import loadmat 
 
 ## Local
 from . import spatial
-from . import bitops
 
 ## Optional
 try:
@@ -152,6 +152,8 @@ def load(filename, shape=None, dtype=None):
 	elif pcl and '.ply' in format or '.pcd' in format:
 		X = pcl.load(filename)
 		X = np.asarray(X)
+	elif '.mat' in format:
+		X = loadmat(filename)['SCAN'][0][0][0].T #assume FORD!
 	else:
 		raise Warning("Unsupported format: {}".format(format))
 	

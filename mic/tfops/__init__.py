@@ -2,16 +2,7 @@
 ## Installed
 import tensorflow as tf
 
-## Config
-#tf.config.optimizer.set_experimental_options({
-#	'loop_optimization': False,
-#	'disable_model_pruning': True,
-#	'disable_meta_optimizer': True,
-#})
-
 GPUs = tf.config.list_physical_devices('GPU')
-#for gpu in GPUs:
-#	tf.config.experimental.set_memory_growth(gpu, True)
 
 @tf.function
 def normalize(X):
@@ -29,7 +20,10 @@ def normalized_relu(X):
 
 @tf.function
 def underscore_relu(X):
-	return tf.nn.relu(X) - 1.0
+	X = tf.nn.relu(X, 0.0)
+	m = tf.reduce_mean(X, axis=-1, keepdims=True)
+	X = tf.math.divide_no_nan(X, m)
+	return X - 1e-3
 
 def neg_ones():
 	return tf.initializers.Constant(-1.0)

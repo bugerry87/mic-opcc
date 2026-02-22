@@ -114,109 +114,6 @@ try:
 except:
 	py7zr = None
 
-
-class IndexedConvPCCCallback(LambdaCallback):
-	"""
-	"""
-	def __init__(self, samples, meta,
-		freq=1,
-		steps=0,
-		when=['on_epoch_end'],
-		writer=None,
-		output=None,
-		verbose=False,
-		):
-		"""
-		"""
-		super(IndexedConvPCCCallback, self).__init__(**{w:self for w in when})
-		self.samples = samples
-		self.meta = meta
-		self.steps = steps or meta.num_of_files
-		self.freq = freq
-		self.writer = writer
-		self.output = output
-		self.verbose = verbose
-		self.debug_level = 1
-		pass
-
-	def __call__(self, *args):
-		args = (*args[::-1], 0)
-		log, epoch = args[:2]
-		if epoch % self.freq != 0:
-			return
-		
-		bpp_sum = 0
-		bpp_min = (1<<32)-1
-		bpp_max = 0
-		count_files = 0
-		num_symbols = 0
-		metrics = {}
-		symbol_list = []
-		prob_list = []
-		mask_list = []
-		self.model.reset_metrics()
-		self.filename = None
-		
-		for sample in self.samples:
-			features, _, _, index, mask, layer, symbols, qpos, X, filename = sample
-			filename = str(filename.numpy().decode())
-			tree_end = tf.reduce_all(layer >= self.model.precision)
-			self.filename = filename
-			probs = self.model(tf.tuple([features, index, mask]))
-			symbol_list.append(symbols)
-			prob_list.append(probs * mask)
-			mask_list.append(mask)
-
-			if tree_end:
-				bit_count = 0
-				count_files += 1
-				filename = path.join(self.output, re.sub(r'[/\.]', '__', path.splitext(filename)[0]))
-				probs = tf.concat(prob_list, axis=0)
-				symbols = tf.concat(symbol_list, axis=0)
-				mask = tf.concat(mask_list, axis=0)
-				symbol_list.clear()
-				prob_list.clear()
-				mask_list.clear()
-
-				if tfc:
-					code = tfc_range_encode(probs[..., 1:], symbols - 1).numpy()
-					decoded = tfc_range_decode(probs, code, symbols.shape)
-					assert(tf.math.reduce_all(symbols == tf.cast(decoded, symbols.dtype)))
-					np.array(code).tofile(filename + '.dbx2.bin')
-					bit_count = len(code) * 8.0
-
-				mask = mask.numpy().astype(np.uint8).reshape(-1)
-				bpp = (bit_count + len(mask)) / X.shape[-2]
-				bpp_min = min(bpp_min, bpp)
-				bpp_max = max(bpp_max, bpp)
-				bpp_sum += bpp
-				symbols.numpy().astype(np.uint8).tofile(filename + '.sym.bin')
-				np.packbits(mask).tofile(filename + '.hst.bin')
-				qpos.numpy().tofile(filename + '.pts.bin')
-				num_symbols += len(symbols)
-				self.debug_level = 0
-				if self.steps and self.steps == count_files:
-					break
-		
-		metrics['bpp'] = bpp_sum / count_files
-		metrics['bpp_min'] = bpp_min
-		metrics['bpp_max'] = bpp_max
-		metrics['symbols'] = num_symbols / count_files
-		if GPUs:
-			metrics['mem_peak'] = tf.config.experimental.get_memory_info('GPU:0')['peak']
-		
-		for name, metric in metrics.items():
-			name = 'test_' + name
-			log[name] = metric
-		
-		if self.writer is not None:
-			with self.writer.as_default():
-				for name, metric in metrics.items():
-					tf.summary.scalar(name, metric, epoch)
-			self.writer.flush()
-		pass
-
-
 class MultiIndexedConvPCCCallback(LambdaCallback):
 	"""
 	"""
@@ -227,8 +124,6 @@ class MultiIndexedConvPCCCallback(LambdaCallback):
 		writer=None,
 		output=None,
 		range_coder='nrc',
-		floor=1e-4,
-		test_precision=None,
 		verbose=False,
 		):
 		"""
@@ -243,8 +138,6 @@ class MultiIndexedConvPCCCallback(LambdaCallback):
 		self.range_coder = range_coder
 		self.verbose = verbose
 		self.debug_level = 1
-		self.floor = floor
-		self.test_precision = test_precision
 		self.delta_time = time_delta()
 		self.tflog = tf.get_logger()
 		pass
@@ -264,10 +157,9 @@ class MultiIndexedConvPCCCallback(LambdaCallback):
 		self.model.reset_metrics()
 		self.filename = None
 		inference = 0
-		mask_list = [0] * min(self.test_precision or self.model.precision, self.model.slices[-1])
 		max_point = 0
 		num_symbols = 0
-		acc = 0
+		acc_sum = 0
 
 		if self.range_coder == 'nrc':
 			code = np.zeros([0], np.uint8)
@@ -279,30 +171,30 @@ class MultiIndexedConvPCCCallback(LambdaCallback):
 			pass
 		
 		for sample in self.samples:
-			qpos, X, filename, layer, tree_end = sample[-5:]
-			i = int(sum(layer.numpy() >= self.model.slices[1:]))
+			Q, X, filename, layer, tree_end = sample[-5:]
+			layer = int(layer)
+			i = self.model.model_num(layer)
 			F = sample[i]
 			I = sample[i+self.model.num_models]
-			M = sample[self.model.num_models*2]
-			symbols = sample[-6]
+			T = sample[i+self.model.num_models*2]
+			L = sample[i+self.model.num_models*3]
+			symbols = tf.where(L)[...,-1]
 
 			filename = str(filename.numpy().decode())
 			self.filename = filename
-			layer = int(layer)
-			mask_list[layer] = M
 			max_point = max(len(X), max_point)
 			
 			next(self.delta_time)
-			probs = (self.model.models[i](tf.tuple([F, I, M])) + self.floor) * M
+			probs = self.model.models[i](tf.tuple([F, I, T]))
 			inference += next(self.delta_time)
-			acc += np.sum(np.argmax(probs.numpy(), axis=-1) == symbols.numpy())
-			num_symbols += len(symbols)
+			acc_sum += np.sum(tf.argmax(probs, axis=-1) == symbols)
+			num_symbols += len(L)
 
 			if self.range_coder == 'nrc':
-				symbols = symbols.numpy().astype(np.uint8)
-				cdfs = nrc.prob2cdf(probs[..., 1:].numpy())
+				symbols = tf.reshape(symbols, [-1]).numpy().astype(np.uint8)
+				cdfs = nrc.prob2cdf(probs.numpy())
 				p = pointer % 8
-				c, pointer = nrc.encode(symbols - 1, cdfs, pointer=p)
+				c, pointer = nrc.encode(symbols, cdfs, pointer=p)
 				code = nrc.seemless_concat(code, c, p)
 			else:
 				prob_list.append(probs)
@@ -313,12 +205,9 @@ class MultiIndexedConvPCCCallback(LambdaCallback):
 				bit_count = 0
 				count_files += 1
 				filename = path.join(self.output, re.sub(r'[/\.]', '__', path.splitext(filename)[0]))
-				mask = tf.concat(mask_list[1::], axis=0)
-				mask = np.packbits(mask.numpy().astype(np.uint8))
 
 				if self.range_coder == 'nrc':
 					code, pointer = nrc.finalize(code, pointer)
-					np.hstack([mask, code]).tofile(filename + '.mic.bin')
 					bit_count = len(code) * 8
 					code = np.zeros([0], np.uint8)
 					pointer = 0
@@ -328,8 +217,9 @@ class MultiIndexedConvPCCCallback(LambdaCallback):
 					symbols = tf.concat(symbol_list, axis=0)
 					symbol_list.clear()
 					prob_list.clear()
-					code = tfc_range_encode(probs[..., 1:], symbols - 1).numpy()
-					decoded = tfc_range_decode(probs[..., 1:], code, symbols.shape) + 1
+					symbols = tf.reshape(symbols, [-1])
+					code = tfc_range_encode(probs, symbols).numpy()
+					decoded = tfc_range_decode(probs, code, symbols.shape)
 					symbols = tf.cast(symbols, tf.uint8)
 					decoded = tf.cast(decoded, tf.uint8)
 					if tf.reduce_any(symbols != decoded):
@@ -339,29 +229,33 @@ class MultiIndexedConvPCCCallback(LambdaCallback):
 				else:
 					probs = tf.concat(prob_list, axis=0)
 					symbols = tf.concat(symbol_list, axis=0)
-					probs.numpy().tofile(filename + '.prp.bin')
+					symbols = tf.reshape(symbols, [-1])
+					probs = tf.gather(probs, symbols, batch_dims=1)
+					bit_count = np.sum(-np.log2(probs.numpy()))
+					probs.numpy().tofile(filename + '.prb.bin')
 					symbols.numpy().astype(np.uint8).tofile(filename + '.sym.bin')
 					symbol_list.clear()
 					prob_list.clear()
 					pass
 
 				bpp = bit_count / len(X)
-				bpp_min = min(bpp_min, bpp)
-				bpp_max = max(bpp_max, bpp)
+				bpop = bit_count / len(Q)
+				bpp_min = min(bpp_min, bpop)
+				bpp_max = max(bpp_max, bpop)
 				bpp_sum += bpp
-				bpop_sum += bit_count / len(qpos)
-				qpos.numpy().tofile(filename + '.pts.bin')
+				bpop_sum += bpop
 				
 				self.debug_level = 0
 				if self.steps and self.steps == count_files:
 					break
 		
-		metrics['acc'] = acc / num_symbols
+		metrics['acc'] = acc_sum / num_symbols
 		metrics['bpp'] = bpp_sum / count_files
 		metrics['bpp/min'] = bpp_min
 		metrics['bpp/max'] = bpp_max
 		metrics['bpp/output'] = bpop_sum / count_files
 		metrics['inference'] = inference / count_files
+		metrics['inference/point'] = inference / count_files / max_point
 		if GPUs:
 			peak = tf.config.experimental.get_memory_info('GPU:0')['peak']
 			metrics['mem_peak'] = peak
