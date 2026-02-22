@@ -1,6 +1,6 @@
 # MIC-OPCC: Multi-Indexed Convolution model for Octree Point Cloud Compression
 
-Multi-Indexed Convolution introduces an alternative approach to spatial feature extraction, which we use in our entropy model to compress the occupation symbols of octree-encoded point clouds. This method achieves offers reduced time and memory usage per point compared to related work.
+Multi-Indexed Convolution introduces an alternative approach to spatial feature extraction, which we use in our entropy model to compress the occupation symbols of octree-encoded point clouds. This method offers reduced time and memory usage per point compared to related work.
 
 ## Requirements
 
