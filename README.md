@@ -28,7 +28,7 @@ Download and extract the [Semantic KITTI](https://semantic-kitti.org/) dataset t
 ## Usage
 
 ```
-MultiIndexedConvolutionPCC
+MultiIndexedTransposedConvolutionPCC
 
 options:
   -h, --help            show this help message and exit
@@ -42,6 +42,10 @@ options:
                         Shape of the input data
   --xtype TYPE          Type of the input data
   --xformat FORMAT      Format of the input data
+  --offset Float [Float ...]
+                        Quantization offset
+  --scale Float [Float ...]
+                        Quantization scale
   --epochs INT, -e INT  Num of epochs
   --learning_rate Float
                         Learning rate for the Adam optimizer (default=1e-4)
@@ -58,29 +62,41 @@ options:
   --test_steps INT      Define for test on a subset
   --test_precision INT  Define precision during test
   --range_coder STR     Select range coder implementation
-  --floor Float         Probability floor for range coder (default=1e-4)
   --shuffle INT         Size of the shuffle buffer
   --precision INT, -P INT
                         Quantization precision
+  --tree_type INT, -t INT
+                        Tree type: 1 = binary tree, 2 = quatree, 3 = octree
   --qmode STR, -q STR   Quantization precision
+  --derotate            Sort axis by major components
+  --disolver            Run in disolver mode
+  --rotate STR          Random rotation augmentation - use "xyz" (default="")
+  --grouping STR, -g STR
+                        Grouping strategy
   --slices INT [INT ...], -S INT [INT ...]
                         Tree slices
-  --kernels INT, -k INT
+  --chunk INT, -C INT   Chunk level
+  --kernels INT [INT ...], -k INT [INT ...]
                         num of kernel units
+  --windows INT [INT ...], -w INT [INT ...]
+                        window size
+  --beam INT [INT ...], -b INT [INT ...]
+                        size of the beam search
   --convolutions INT [INT ...], -c INT [INT ...]
                         number of convolution layers
-  --heads INT [INT ...], -n INT [INT ...]
-                        number of transformer heads
-  --augmentation        Whether to apply data augmentation or (default) not
+  --head_size INT [INT ...], -n INT [INT ...]
+                        the dense layer size after convolution
+  --salt FLOAT          Ratio to add salt to data - adds random points (default=0.0)
+  --pepper FLOAT        Ratio to add pepper to data - removes random points (default=0.0)
   --dropout FLOAT       Dropout (default=0.0)
-  --strides INT [INT ...], -s INT [INT ...]
-                        Strid step of each batch (default=[1,6,12])
   --seed INT            Initial model seed
   --log_dir PATH        Model type (default=logs)
   --verbose INT, -v INT
                         verbose level (see tensorflow)
+  --profiler INT        Activate profiler per batch (default=0)
   --cpu                 Whether to allow cpu or (default) force gpu execution
   --checkpoint PATH     Load from checkpoint
+  --generate FLOAT      Generate a confidence point cloud at the end (default=0.0)
 ```
 
 ### Run a Toy Example
@@ -101,6 +117,26 @@ python ./train_mic_pcc.py -X ./samples/mini_index.txt -T ./samples/mini_index.tx
 ```
 
 ## Citation
+
+### MIC-OPCC v2.0
+
+Baulig, G.; Guo, J.-I. Autoregressive and Residual Index Convolution Model for Point Cloud Geometry Compression. Sensors 2026, 26, 1287. https://doi.org/10.3390/s26041287
+
+```
+@Article{s26041287,
+AUTHOR = {Baulig, Gerald and Guo, Jiun-In},
+TITLE = {Autoregressive and Residual Index Convolution Model for Point Cloud Geometry Compression},
+JOURNAL = {Sensors},
+VOLUME = {26},
+YEAR = {2026},
+NUMBER = {4},
+ARTICLE-NUMBER = {1287},
+URL = {https://www.mdpi.com/1424-8220/26/4/1287},
+ISSN = {1424-8220},
+ABSTRACT = {This study introduces a hybrid point cloud compression method that transfers from octree-nodes to voxel occupancy estimation to find its lower-bound bitrate by using a Binary Arithmetic Range Coder. In previous attempts, we demonstrated that our entropy compression model based on index convolution achieves promising performance while maintaining low complexity. However, our previous model lacks an autoregressive approach, which is apparently indispensable to compete with the current state-of-the-art of compression performance. Therefore, we adapt an autoregressive grouping method that iteratively populates, explores, and estimates the occupancy of 1-bit voxel candidates in a more discrete fashion. Furthermore, we refactored our backbone architecture by adding a distiller layer on each convolution, forcing every hidden feature to contribute to the final output. Our proposed model extracts local features using lightweight 1D convolution applied in varied ordering and analyzes causal relationships by optimizing the cross-entropy. This approach efficiently replaces the voxel convolution techniques and attention models used in previous works, providing significant improvements in both time and memory consumption. The effectiveness of our model is demonstrated on three datasets, where it outperforms recent deep learning-based compression models in this field.},
+DOI = {10.3390/s26041287}
+}
+```
 
 ## License
 
