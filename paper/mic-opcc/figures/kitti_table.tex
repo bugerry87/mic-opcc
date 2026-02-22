@@ -1,0 +1,20 @@
+
+\begin{table}[htb] 
+\caption{
+Theoretical computational complexity of three leading point cloud compression architectures and their corresponding practical decoding times.
+\label{tab:kitti_table}
+}
+\isPreprints{\centering}{}
+\begin{tabularx}{\textwidth}{lcccc|cc}
+\toprule
+ & \textbf{Quantization} & \textbf{D1-PSNR (dB)} & \multirowcell{2}{bpp} & \multirowcell{2}{time (s)} & \multicolumn{2}{c}{\textbf{ours}} \\
+ & $L=12$ & $p=1$ & & & bpp & time (s) \\
+\midrule
+ECM-OPCC & $\left\lfloor P\frac{2^{L}-1}{\max(P)-\min(P)} \right\rfloor$ & 77.2 & 3.39 & - & 3.41 & 4.0 \\[12pt] %22.03
+
+EHEM & $ \left\lfloor P\frac{2^{L}-1}{400} \right\rfloor$ & 60.0 & 2.6 & 0.43 & 1.99 & 3.0 \\[12pt] %18.67
+
+RENO & $ \left\lfloor P\frac{1000}{2^{18-L}} \right\rfloor$ & 61.8 & 2.9 & 0.05 & 2.41 & 3.6  \\ %18.00
+\bottomrule
+\end{tabularx}
+\end{table}

@@ -1,0 +1,23 @@
+\begin{table}[htb]
+\caption{
+Ablation study of the proposed model-splitting strategy, where dedicated sub-modules are assigned to different depth ranges of the octree.
+Table header labels denote model configurations; for example, \textbf{0--4--8--12} indicates three sub-modules split at octree layers 4, 8, and 12.
+To illustrate scaling behavior, each sub-module contains a number of convolution layers equal to its upper split boundary (i.e., 4, 8, and 12 layers).
+All configurations are evaluated on the SemanticKITTI dataset~\citep{SemanticKITTI} for 10 epochs with 1{,}000 samples per epoch.
+\textit{* Peak memory spikes observed during backpropagation.}
+}
+\label{tab:model_splitting_ablation}
+\isPreprints{\centering}{}
+\begin{tabularx}{\textwidth}{c|ccccc}
+
+\toprule
+\textbf{Model Splitting} & \textbf{0--12} & \textbf{0--6--12} & \textbf{0--4--8--12} & \textbf{0--3--6--9--12} & \textbf{0--2--4--6--8--10--12} \\
+\midrule
+\textbf{Bits per Point} & 4.169 & 3.883 & 3.722 & 3.720 & 3.715 \\
+\textbf{Estimation Accuracy} & 84.2\% & 85.3\% & 85.9\% & 86.0\% & 86.0\% \\
+\textbf{Memory Peak per Point}* & 116.9KB & 117.3KB & 117.1KB & 117.0KB & 117.2KB \\
+\textbf{Inference per Point} & 0.532ns & 0.434ns & 0.405ns & 0.392ns & 0.367ns \\
+\bottomrule
+
+\end{tabularx}
+\end{table}

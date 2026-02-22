@@ -1,0 +1,16 @@
+\begin{table}[htb] 
+\caption{
+Theoretical computational complexity of three leading point cloud compression architectures and their corresponding practical decoding times.
+\label{tab:complexity}
+}
+\centering
+\begin{tabularx}{\textwidth}{CCCC}
+    \toprule
+    \textbf{Method} & \textbf{Complexity} & \textbf{Example} & \textbf{Decoding Time (s)} \\
+    \midrule
+    Transformer & $\mathcal{O}\left(n(3ckw + kw^2)\right)$ & ECM-OPCC & 19.5 \\[6pt]
+    Minkowski Convolution & $\mathcal{O}\left(m(ckw^d)\right)$ & UniPCGC & 0.57 \\[12pt]
+    Multi-Index Convolution & $\mathcal{O}\left(n(ckwi)\right)$ & MIC-OPCCv2 & 5.0 \\
+    \bottomrule
+\end{tabularx}
+\end{table}

@@ -1,0 +1,22 @@
+\begin{table}[htb]
+\caption{Ablation study of the proposed methods from Section~\ref{sec:methods}. All BD-Rates are relative to G-PCCv14.}
+\label{tab:ablation_study}
+\isPreprints{\centering}{}
+\begin{tabularx}{\textwidth}{c|c|cccc|c}
+
+\toprule
+\textbf{Method}                 & \textbf{MIC-OPCCv1}   &            &            &            &            & \textbf{MIC-OPCCv2}  \\
+\midrule
+\textbf{node estimation}        & \checkmark            &            &            &            &            &            \\
+\textbf{voxel estimation}       &                       & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+\textbf{Blender \& Distiller}   &                       &            & \checkmark & \checkmark & \checkmark & \checkmark \\
+\textbf{Sequential Grouping}    &                       &            &            & \checkmark &            &            \\
+\textbf{Progressive Grouping}   &                       &            &            &            & \checkmark & \checkmark \\
+\textbf{Sub-Modules}            & \checkmark            &            &            &            &            & \checkmark \\
+\midrule
+\textbf{Gain$^{-1}$}            & 20.2\%                & 21.8\%     &  25.4\%    &  28.1\%    &  28.6\%    & 30.6\%     \\
+\textbf{Decoding Time (s)}      & 2.2                   & 2.8        &  2.9       &  5.4       &  5.3       & 5.1        \\
+\bottomrule
+
+\end{tabularx}
+\end{table}

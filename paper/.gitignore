@@ -1,0 +1,15 @@
+./build/
+*.log
+*.glo
+*.fls
+*.out
+*.bbl
+*.aux
+*.acn
+*.ist
+*.blg
+*.fdb*
+*.gz
+*.synctex.*
+*.pdf
+!*/**/*.pdf

@@ -1,0 +1,23 @@
+\begin{table}[htb]
+\caption{
+Ablation study of different autoregressive grouping strategies using the MVUB dataset~\citep{MVUB}.
+\textbf{Without Grouping}: No voxel grouping is applied and decoding follows a fully parallel scheme. All voxel $v$ of all octree-nodes $\mathbf{o}_t$ are decoded a in single stage.
+\textbf{Sequential Grouping}: One voxel $v_{g}$ of all octree-nodes $\mathbf{o}_{t}$ are decoded in parallel at each monotonic step $g \in [1\dots8]$.
+\textbf{Progressive Grouping}: The proposed strategy, which skips a subset of octree-nodes during early stages ($g \leq 4$) to reduce uncertainty, and progressively decodes multiple voxel candidates per node in later stages ($g > 6$) as contextual information becomes richer.
+\textit{* Peak memory spikes observed during backpropagation.}
+}
+\label{tab:grouping_ablation}
+\isPreprints{\centering}{}
+\begin{tabularx}{\textwidth}{c|ccc}
+
+\toprule
+\textbf{Method}                 & \textbf{Without Grouping} & \textbf{Sequential Grouping}  & \textbf{Progressive Grouping}  \\
+\midrule
+\textbf{Bits per Point}         &  1.25                 & 0.76                          & 0.64   \\
+\textbf{Estimation Accuracy}    &  84\%                 & 90\%                          & 92\% \\
+\textbf{Memory Peak per Point}  &  14.6KB               & 10.1KB                        & 12.9KB \\
+\textbf{Inference per Point}    &  1.076ns              & 3.105ns                       & 2.594ns   \\
+\bottomrule
+
+\end{tabularx}
+\end{table}
