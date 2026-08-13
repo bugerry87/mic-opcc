@@ -33,7 +33,7 @@ def init_main_args(parents=[]):
 		main_args: The ArgumentParsers.
 	"""
 	main_args = ArgumentParser(
-		description="MultiIndexedTransposedConvolutionPCC",
+		description="MultiIndexedBeamConvolutionPCC",
 		conflict_handler='resolve',
 		parents=parents
 		)
@@ -115,7 +115,7 @@ def init_main_args(parents=[]):
 		'--learning_rate',
 		metavar='Float',
 		type=float,
-		default=1e-3,
+		default=1e-4,
 		help="Learning rate for the Adam optimizer (default=1e-4)"
 		)
 	
@@ -237,9 +237,9 @@ def init_main_args(parents=[]):
 		)
 	
 	main_args.add_argument(
-		'--disolver',
+		'--eroder', # nucleation vs. erodation
 		action='store_true',
-		help='Run in disolver mode'
+		help='Run in eroder mode'
 		)
 	
 	main_args.add_argument(
@@ -295,12 +295,11 @@ def init_main_args(parents=[]):
 		)
 	
 	main_args.add_argument(
-		'--beam', '-b',
+		'--embedding', '-E',
 		metavar='INT',
-		nargs='+',
 		type=int,
-		default=[1],
-		help='size of the beam search'
+		default=16,
+		help='num of embedding units'
 		)
 	
 	main_args.add_argument(
@@ -317,7 +316,7 @@ def init_main_args(parents=[]):
 		metavar='INT',
 		nargs='+',
 		type=int,
-		default=[2],
+		default=[0],
 		help='the dense layer size after convolution'
 		)
 	
@@ -426,14 +425,14 @@ def main(
 	chunk=1,
 	qmode=0,
 	derotate=False,
-	disolver=False,
+	eroder=False,
 	rotate='',
-	grouping='progressive',
+	grouping='sequential',
 	kernels=[32],
 	windows=[3],
-	beam=[1],
+	embedding=16,
 	convolutions=[12],
-	head_size=[1],
+	head_size=[0],
 	salt=0.0,
 	pepper=0.0,
 	dropout=0.0,
@@ -459,10 +458,10 @@ def main(
 	tf.random.set_seed(seed)
 	timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 	log_dir = os.path.join(log_dir, timestamp)
-	log_model = os.path.join(log_dir, "ckpts", "mic_{epoch:04d}-{loss:.3f}.weights.h5")
+	log_model = os.path.join(log_dir, "ckpts", "mic_opcc_{epoch:04d}-{loss:.3f}.weights.h5")
 	log_output = os.path.join(log_dir, timestamp + '.log')
 	log_data = os.path.join(log_dir, 'test')
-	os.makedirs(os.path.join(log_dir, 'ckpts'), exist_ok=True)
+	os.makedirs(os.path.join(log_dir, "ckpts"), exist_ok=True)
 	train_index = train_index[0] if train_index and len(train_index) == 1 else train_index
 	val_index = val_index[0] if val_index and len(val_index) == 1 else val_index
 	test_index = test_index[0] if test_index and len(test_index) == 1 else test_index
@@ -485,7 +484,7 @@ def main(
 			windows=windows,
 			precision=precision,
 			slices=slices,
-			beam=beam,
+			embedding=embedding,
 			tree_type=tree_type,
 			dropout=dropout,
 			**kwargs
@@ -501,7 +500,7 @@ def main(
 		scale=scale,
 		grouping=grouping,
 		derotate=derotate,
-		disolver=disolver,
+		eroder=eroder,
 	)
 	
 	trainer, train_meta = model.trainer(train_index, 

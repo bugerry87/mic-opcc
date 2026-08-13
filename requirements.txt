@@ -1,0 +1,9 @@
+#python==3.10
+tensorflow==2.9.0
+keras==2.9.0
+numba==0.60
+scipy==1.12.0
+
+#Optional
+tensorflow-probability==0.15.0
+tensorflow-compression==2.9.2

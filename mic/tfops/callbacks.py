@@ -1,18 +1,19 @@
 
 ## Build In
 import os.path as path
-import pickle
 import re
 
 ## Installed
 import numpy as np
 import tensorflow as tf
 from keras.callbacks import Callback, LambdaCallback
+from scipy.spatial import cKDTree
 
 ## Local
 from . import GPUs
 from .. import numba_range_coder as nrc
 from ..utils import time_delta
+
 
 ## Optional
 try:
@@ -20,16 +21,8 @@ try:
 
 	#@tf.function(experimental_relax_shapes=True)
 	def tfc_range_encode(probs, symbols):
-		symbols = tf.reshape(symbols, [-1])
 		symbols = tf.cast(symbols, tf.int16)
-		probs = tf.reshape(probs, [-1, 255])
-
-		cdf = tf.math.cumsum(probs, axis=-1)
-		cdf = tf.math.round(cdf / cdf[...,-1,None] * float(1<<16))
-		cdf = tf.cast(cdf, tf.int32)
-		cdf = tf.pad(cdf, [(0,0),(1,0)])
-
-		#cdf = tfc.ops.pmf_to_quantized_cdf(probs, precision=16)
+		cdf = tfc.ops.pmf_to_quantized_cdf(probs, precision=16)
 		code = tfc.python.ops.gen_ops.range_encode(
 			symbols,
 			cdf,
@@ -40,14 +33,7 @@ try:
 	
 	#@tf.function(experimental_relax_shapes=True)
 	def tfc_range_decode(probs, code, shape):
-		probs = tf.reshape(probs, [-1, 255])
-
-		cdf = tf.math.cumsum(probs, axis=-1)
-		cdf = tf.math.round(cdf / cdf[...,-1,None] * float(1<<16))
-		cdf = tf.cast(cdf, tf.int32)
-		cdf = tf.pad(cdf, [(0,0),(1,0)])
-
-		#cdf = tfc.ops.pmf_to_quantized_cdf(probs, precision=16)
+		cdf = tfc.ops.pmf_to_quantized_cdf(probs, precision=16)
 		symbols = tfc.python.ops.gen_ops.range_decode(
 			code,
 			shape,
@@ -56,36 +42,6 @@ try:
 			debug_level=0,
 		)
 		return symbols
-	
-	@tf.function(experimental_relax_shapes=True)
-	def binary_range_encode(probs, symbols, hist, debug_level=0):
-		mask = tf.cast(hist != 0.0, tf.int32)
-		mask *= tf.cast(hist != 1.0, tf.int32)
-		shape = tf.reduce_sum(mask)[...,None]
-		mask = tf.where(mask)
-		symbols = tf.gather_nd(symbols, mask)
-		symbols = tf.cast(symbols, tf.int16)
-		probs = tf.gather_nd(probs - 0.5, mask)[...,None]
-		probs = tf.abs(probs + (-.5, .5))
-
-		cdf = tfc.ops.pmf_to_quantized_cdf(probs, precision=16)
-		code = tfc.python.ops.gen_ops.range_encode(
-			symbols,
-			cdf,
-			precision=16,
-			debug_level=debug_level,
-		)
-		if debug_level:
-			decoded = tfc.python.ops.gen_ops.range_decode(
-				code,
-				shape,
-				cdf,
-				precision=16,
-				debug_level=debug_level,
-			)
-			decoded = tf.cast(decoded, tf.int16)
-			tf.assert_equal(symbols, decoded)
-		return code
 except:
 	tfc = None
 
@@ -152,6 +108,7 @@ class MultiIndexedConvPCCCallback(LambdaCallback):
 		bpp_min = (1<<32)-1
 		bpp_max = 0
 		bpop_sum = 0
+		cd_sum = 0
 		count_files = 0
 		metrics = {}
 		self.model.reset_metrics()
@@ -168,10 +125,11 @@ class MultiIndexedConvPCCCallback(LambdaCallback):
 		else:
 			symbol_list = []
 			prob_list = []
+			tree_list = []
 			pass
 		
 		for sample in self.samples:
-			Q, X, filename, layer, tree_end = sample[-5:]
+			P, X, filename, layer, tree_end = sample[-5:]
 			layer = int(layer)
 			i = self.model.model_num(layer)
 			F = sample[i]
@@ -201,10 +159,17 @@ class MultiIndexedConvPCCCallback(LambdaCallback):
 				symbol_list.append(symbols)
 				pass
 
+			if self.range_coder not in ['nrc', 'tfc']:
+				tree_list.append(tf.gather(I, T))
+				pass
+
 			if tree_end:
 				bit_count = 0
 				count_files += 1
 				filename = path.join(self.output, re.sub(r'[/\.]', '__', path.splitext(filename)[0]))
+				XP = cKDTree(X).query(P, k=1, workers=8)[0].mean()
+				PX = cKDTree(P).query(X, k=1, workers=8)[0].mean()
+				cd_sum += (XP + PX) * 0.5
 
 				if self.range_coder == 'nrc':
 					code, pointer = nrc.finalize(code, pointer)
@@ -229,17 +194,21 @@ class MultiIndexedConvPCCCallback(LambdaCallback):
 				else:
 					probs = tf.concat(prob_list, axis=0)
 					symbols = tf.concat(symbol_list, axis=0)
+					tree = tf.concat(tree_list, axis=0)
 					symbols = tf.reshape(symbols, [-1])
 					probs = tf.gather(probs, symbols, batch_dims=1)
 					bit_count = np.sum(-np.log2(probs.numpy()))
 					probs.numpy().tofile(filename + '.prb.bin')
 					symbols.numpy().astype(np.uint8).tofile(filename + '.sym.bin')
+					tree.numpy().tofile(filename + '.tre.bin')
+					P.numpy().tofile(filename + '.pts.bin')
 					symbol_list.clear()
 					prob_list.clear()
+					tree_list.clear()
 					pass
 
 				bpp = bit_count / len(X)
-				bpop = bit_count / len(Q)
+				bpop = bit_count / len(P)
 				bpp_min = min(bpp_min, bpop)
 				bpp_max = max(bpp_max, bpop)
 				bpp_sum += bpp
@@ -254,6 +223,7 @@ class MultiIndexedConvPCCCallback(LambdaCallback):
 		metrics['bpp/min'] = bpp_min
 		metrics['bpp/max'] = bpp_max
 		metrics['bpp/output'] = bpop_sum / count_files
+		metrics['cd/mean'] = cd_sum / count_files
 		metrics['inference'] = inference / count_files
 		metrics['inference/point'] = inference / count_files / max_point
 		if GPUs:

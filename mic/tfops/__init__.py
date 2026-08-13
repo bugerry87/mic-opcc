@@ -2,7 +2,16 @@
 ## Installed
 import tensorflow as tf
 
+## Config
+#tf.config.optimizer.set_experimental_options({
+#	'loop_optimization': False,
+#	'disable_model_pruning': True,
+#	'disable_meta_optimizer': True,
+#})
+
 GPUs = tf.config.list_physical_devices('GPU')
+#for gpu in GPUs:
+#	tf.config.experimental.set_memory_growth(gpu, True)
 
 @tf.function
 def normalize(X):

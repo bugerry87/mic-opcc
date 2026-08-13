@@ -5,7 +5,8 @@ import tensorflow as tf
 import numpy as np
 from keras import Model
 from keras.layers import (
-	Input
+	Embedding,
+	Input,
 )
 
 ## Local
@@ -48,12 +49,6 @@ def labelize_symbols(symbols, symbol_size):
 	weights = tf.abs(symbols - weights)
 	return symbols, weights
 
-def tail(args):
-	for i in args:
-		yield i
-	while True:
-		yield i
-
 class MultiIndexedBeamConvPCC(Model):
 	def __init__(
 		self,
@@ -63,7 +58,7 @@ class MultiIndexedBeamConvPCC(Model):
 		convolutions=[12],
 		neck_length=[2],
 		windows=[3],
-		beam=[1],
+		embedding=16,
 		dropout=0,
 		bins=2,
 		dims=3,
@@ -77,28 +72,28 @@ class MultiIndexedBeamConvPCC(Model):
 		self.tree_type = tree_type
 		self.precision = precision
 		self.slices = np.array(slices)
+		self.embedding = Embedding(1<<precision, embedding) if embedding else None
 		self.models = [
 			IndexedBeamConvPCC(
 				kernels=k,
 				convolutions=c,
 				head_size=n,
-				beam=b,
 				window_size=w,
 				precision=precision,
 				start=s,
 				end=e,
 				bins=bins,
 				dropout=dropout,
+				embedding=self.embedding,
 				name=f"SubModel_{i}"
 			)
-			for i, (s, e, k, c, w, n, b) in enumerate(zip(
+			for i, (s, e, k, c, w, n) in enumerate(zip(
 				slices[:-1],
 				slices[1:],
-				tail(kernels),
-				tail(convolutions),
-				tail(windows),
-				tail(neck_length),
-				tail(beam)
+				utils.tail(kernels),
+				utils.tail(convolutions),
+				utils.tail(windows),
+				utils.tail(neck_length),
 			))
 		]
 		pass
@@ -189,7 +184,7 @@ class MultiIndexedBeamConvPCC(Model):
 		salt=0.0,
 		pepper=0.0,
 		derotate=False,
-		disolver=False,
+		eroder=False,
 		scale=None,
 		offset=None,
 		chunk=1,
@@ -216,11 +211,6 @@ class MultiIndexedBeamConvPCC(Model):
 					X = X[...,:meta.dim]
 					pass
 
-				if derotate:
-					e = tf.reduce_max(X, axis=0) - tf.reduce_min(X, axis=0)
-					a = tf.argsort(e, direction='DESCENDING')
-					X = tf.gather(X, a, axis=1)
-
 				if 'x' in rotate:
 					a = tf.random.uniform([], -math.pi, math.pi)
 					M = tf.concat([
@@ -246,11 +236,20 @@ class MultiIndexedBeamConvPCC(Model):
 					], axis=0)
 					X = tf.matmul(X, M)
 				
+				if derotate:
+					e = tf.reduce_max(X, axis=0) - tf.reduce_min(X, axis=0)
+					a = tf.argsort(e, direction='DESCENDING')
+					X = tf.gather(X, a, axis=1)
+				
 				dim = X.shape[-1]
 				if qmode is None or qmode == 'none':
 					Q = tf.cast(X, tf.int64)
+					_offset = 0 
+					_scale = 1
 				else:
-					Q = bitops.quantization(tf.cast(X, tf.float64), 1<<self.precision, offset=offset, scale=scale, mode=qmode)[0]
+					Q, _offset, _scale, = bitops.quantization(tf.cast(X, tf.float64), 1<<precision, offset=offset, scale=scale, mode=qmode)
+					if self.precision != precision:
+						Q = bitops.left_shift(Q, self.precision - precision)
 				Q = bitops.serialize(Q, self.precision)
 
 				if salt:
@@ -264,6 +263,8 @@ class MultiIndexedBeamConvPCC(Model):
 					Q = tf.random.shuffle(Q)
 					Q = Q[p:]
 				Q = tf.sort(Q)
+				_scale = tf.cast(_scale, tf.float64) * 2**(self.precision - precision)
+				P = bitops.realize(Q, self.precision, dim, _offset, _scale, xtype=tf.float64)
 				q = len(Q) // chunk
 
 				for step in tf.range(self.slices[0] * self.dims, precision * self.dims, self.tree_type, dtype=tf.int64):
@@ -289,8 +290,8 @@ class MultiIndexedBeamConvPCC(Model):
 							e = tf.reduce_sum(e, axis=0, keepdims=True)
 							e = tf.repeat(e, len(labels), axis=0)
 							t = tf.where(e[skip::scatter]) * [[scatter, 1]] + [[skip, 0]]
-							m = 1.0-mask if disolver else mask
-							target = tf.cast(e + labels + m > 0, tf.int32)
+							target = e + (labels + 1.0 - mask if eroder else labels * mask)
+							target = tf.cast(target > 0, tf.int32)
 							i = tf.where(target)
 							f_origins = tf.gather(U, i[...,0]) + bitops.left_shift(i[...,1], shift - self.tree_type)
 							qpos = bitops.realize(f_origins, self.precision, dim, 0, 1, xtype=tf.int64)
@@ -331,7 +332,7 @@ class MultiIndexedBeamConvPCC(Model):
 							tree_end = c == C[-1] and step+self.tree_type == precision*self.dims and g+1 == len(groups)
 							yield (
 								*F, *I, *T, *L, sub,
-								Q, X, filename, layer, tree_end,
+								P, X, filename, layer, tree_end,
 							)
 							e = tf.ones(len(t))
 							mask = tf.tensor_scatter_nd_update(mask, t, e)
@@ -348,6 +349,10 @@ class MultiIndexedBeamConvPCC(Model):
 				[(1,0,0), (1,0,1)],
 				[(1,0,0), (1,0,1), (1,0,2), (1,0,3)],
 				[(1,0,0), (1,0,1), (1,0,2), (1,0,3), (1,0,4), (1,0,5), (1,0,6), (1,0,7)],
+				[
+					(1,0,0), (1,0,1), (1,0,2), (1,0,3), (1,0,4), (1,0,5), (1,0,6), (1,0,7),
+	 				(1,0,8), (1,0,9), (1,0,10), (1,0,11), (1,0,12), (1,0,13), (1,0,14), (1,0,15)
+	 			],
 			][self.tree_type-1]
 		elif grouping == 'progressive':
 			groups = [ # (scatter, offset, *flags)
@@ -362,8 +367,9 @@ class MultiIndexedBeamConvPCC(Model):
 				[(1,0,0,1)],
 				[(1,0,0,1,2,3)],
 				[(1,0,0,1,2,3,4,5,6,7)],
+				[(1,0,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15)],
 			][self.tree_type-1]
-		precision = min(self.slices[-1], precision or self.precision)
+		precision = precision or self.precision
 		meta.label_size = self.bins
 		meta.precision = self.precision
 		meta.grouping = grouping
@@ -390,7 +396,7 @@ class MultiIndexedBeamConvPCC(Model):
 					for _ in range(self.num_models)
 				),
 				tf.TensorSpec([self.num_models], tf.float32),
-				tf.TensorSpec([None], tf.int64),
+				tf.TensorSpec([None, 3], tf.float64),
 				tf.TensorSpec([None, 3], tf.float32),
 				tf.TensorSpec([], tf.string),
 				tf.TensorSpec([], tf.int64),

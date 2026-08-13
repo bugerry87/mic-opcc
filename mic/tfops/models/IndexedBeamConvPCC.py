@@ -5,61 +5,35 @@ from keras.layers import (
 	Activation,
 	Dropout,
 	LayerNormalization,
-	Input
+	Concatenate,
+	Flatten,
+	Dense,
+	Add,
+	Input,
 )
 
 ## Local
 from ..layers import (
-	BeamConv1D,
+	IndexConv2D as Conv,
 	Distiller,
+	gather,
 )
 from .. import bitops
 
 @tf.function(experimental_relax_shapes=True)
-def featurize(symbol_buffer, uids, precision, layer, merge):
-	n = tf.reduce_max(merge) + 1
-	mask = tf.range(precision, dtype=layer.dtype) < layer
-	mask = tf.cast(mask, tf.float32)
-	mask = tf.reshape(mask, (-1, precision, 1))
-	shifts = tf.range(precision*3, dtype=uids.dtype)
-	uids = tf.reshape(uids, (-1, 1))
-	uids = bitops.right_shift(uids, shifts)
-	uids = bitops.bitwise_and(uids, 1)
-	uids = tf.reshape(uids, (-1, precision, 3))
-	uids = tf.cast(uids, tf.float32)
-	feature = uids[..., ::-1, :]
-
-	symbols = tf.math.unsorted_segment_max(symbol_buffer, merge, n)
-	symbols = tf.reshape(symbols, [-1, precision, 1])
-	symbols = bitops.right_shift(symbols, tf.range(8, dtype=symbols.dtype))
-	symbols = bitops.bitwise_and(symbols, 1)
-	symbols = tf.cast(symbols, tf.float32)
-	feature = tf.concat([symbols, feature], axis=-1)
-	return feature - mask * 0.5, uids
-
-@tf.function(experimental_relax_shapes=True)
-def labelize(symbols, bins):
-	labels = tf.one_hot(symbols, bins, dtype=tf.float32)
-	hist = tf.math.reduce_mean(labels, axis=0, keepdims=True)
-	mask = tf.cast(hist > 0, tf.float32)
-	return labels, hist, mask
-
-@tf.function(experimental_relax_shapes=True)
-def indexing(pos, offset, shifts):
+def indexing(pos, shifts):
 	r = tf.range(tf.shape(pos)[0])
 	index = [r]
-	inv = [r]
 	for i in range(pos.shape[-1]):
 		I = tf.roll(pos, shift=i, axis=-1)
-		I //= offset
+		I //= 1
 		I = bitops.left_shift(I, shifts)
 		I = tf.reduce_sum(I, axis=-1)	#[5 0 5 2 2 0]	#[a b c d e f]
-		a = tf.argsort(I) 				#[1 5 3 4 0 2]	#[b f d e a c]
-		I = tf.gather(I, a)				#[0 0 2 2 5 5]
-		I = tf.unique(I)[-1]	#[0 2 5]#[0 0 1 1 2 2]	#[bf de ac]
-		index.append(I)			#gather #[0 0 1 1 2 2]	#[bf bf de de ac ac]				
-		inv.append(a)			#scatter#[1 5 3 4 0 2]	#[ac bf ac de de bf]
-	return tf.stack(index), tf.stack(inv)
+		I = tf.argsort(I)
+		index.append(I)			#scatter#[1 5 3 4 0 2]	#[ac bf ac de de bf]
+	index = tf.stack(index)
+	inverse = tf.argsort(index, axis=-1)
+	return index, inverse
 
 class IndexedBeamConvPCC(Model):
 	"""
@@ -69,13 +43,13 @@ class IndexedBeamConvPCC(Model):
 		convolutions=3,
 		head_size=2,
 		window_size=3,
-		beam=3,
 		start=0,
 		end=12,
 		precision=12,
 		bins=2,
 		dims=3,
 		dropout=0.0,
+		embedding=None,
 		name='IndexedBeamConvPCC',
 		**kwargs
 		):
@@ -89,16 +63,25 @@ class IndexedBeamConvPCC(Model):
 		self.dims = dims
 		self.convolutions = convolutions
 		self.shifts = tf.range(self.dims, dtype=tf.int64) * self.precision
-		self.offset = (1, beam, beam)
+		if embedding:
+			self.embedding = embedding
+			self.flatten = Flatten()
+			self.concat = Concatenate()
+		else:
+			self.embedding = None
+		self.channeler = Dense(
+			convolutions+1,
+			activation='softmax',
+		)
 		self.convs = [
-			BeamConv1D(
-				kernels, window_size,
+			Conv(
+				kernels, (1, window_size),
 				padding='same',
 				bias_initializer='ones',
 				activation='relu',
 				name=f'conv_{i}',
-				merge=beam>1,
-				dims=dims+1
+				dims=dims+1,
+				aggregator=Add(),
 			) for i in range(convolutions)
 		]
 		self.norms = [LayerNormalization() for _ in range(convolutions)]
@@ -141,21 +124,25 @@ class IndexedBeamConvPCC(Model):
 	
 	def call(self, inputs, *args, **kwargs):
 		X, pos, target = inputs
-		Y = tf.gather(X, target)
-		Y = self.distillers[0](Y)
-		index = indexing(pos, self.offset, self.shifts)[-1]
-		for conv, norm, distiller in zip(self.convs, self.norms, self.distillers[1:]):
-			X = conv(X, index, index)
+		target = target[...,None]
+		if self.embedding:
+			E = self.embedding(pos)
+			E = self.flatten(E)
+			X = self.concat([E, X]) #* (X[...,-1,None] + 1.5)
+		Y = gather(X, target)
+		C = self.channeler(Y)
+		Y = self.distillers[0](Y) * C[...,0,None]
+		index, inverse = indexing(pos, self.shifts)
+		for i, (conv, norm, distiller) in enumerate(zip(self.convs, self.norms, self.distillers[1:])):
+			X = conv(X[None,None,...], index, inverse)[0,0]
 			X = norm(X)
-			x = tf.gather(X, target)
+			x = gather(X, target)
 			x = self.dropout(x)
-			x = distiller(x)
+			x = distiller(x) * C[...,i+1,None]
 			Y += x
 		Y = self.activation(Y)
 		return Y
 
 __all__ = [
 	IndexedBeamConvPCC,
-	featurize,
-	labelize,
 ]
