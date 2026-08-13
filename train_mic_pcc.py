@@ -120,6 +120,14 @@ def init_main_args(parents=[]):
 		)
 	
 	main_args.add_argument(
+		'--learning_decay',
+		metavar='Float',
+		type=float,
+		default=0.9,
+		help="Learning rate for the Adam optimizer (default=0.9)"
+		)
+	
+	main_args.add_argument(
 		'--monitor',
 		metavar='STR',
 		default=None,
@@ -405,7 +413,8 @@ def main(
 	xtype='float32',
 	xformat='raw',
 	epochs=1,
-	learning_rate=1e-3,
+	learning_rate=1e-4,
+	learning_decay=0.9,
 	monitor=None,
 	save_best_only=False,
 	stop_patience=-1,
@@ -538,7 +547,7 @@ def main(
 	lrs = ExponentialDecay(
 		learning_rate,
 		steps_per_epoch or validation_steps or test_steps,
-		0.9,
+		learning_decay,
 	)
 	optimizer = Adam(
 		learning_rate=lrs,
