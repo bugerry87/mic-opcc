@@ -109,3 +109,9 @@ class Prototype():
 	
 	def __iter__(self):
 		return iter(self.__dict__)
+
+def tail(any: list):
+	for item in any:
+		yield item
+	while True:
+		yield item

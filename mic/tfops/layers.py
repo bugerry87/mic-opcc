@@ -3,12 +3,52 @@
 import tensorflow as tf
 from keras.layers import (
 	Layer,
-	Conv1D,
 	Conv2D,
 	LayerNormalization,
 	Dense,
+	Add,
 )
 
+@tf.custom_gradient
+def permuted_conv(x, W, b, I, I_inv):
+	permuted = tf.gather(x, I, axis=-2)
+	y = tf.nn.conv2d(permuted, W, strides=1, padding='SAME')
+	y = tf.gather(y + b, I_inv, axis=-2)
+
+	def grad(dy):
+		dy = tf.gather(dy, I, axis=-2)
+		db = tf.reduce_mean(dy, axis=(0,1,2))
+		dW = tf.raw_ops.Conv2DBackpropFilter(
+			input=permuted,
+			filter_sizes=tf.shape(W),
+			out_backprop=dy,
+			strides=[1,1,1,1],
+			padding='SAME'
+		)
+		dx_perm = tf.raw_ops.Conv2DBackpropInput(
+			input_sizes=tf.shape(permuted),
+			filter=W,
+			out_backprop=dy,
+			strides=[1,1,1,1],
+			padding='SAME'
+		)
+		dx = tf.gather(dx_perm, I_inv, axis=-2)
+		return dx, dW, db, None, None
+	return y, grad
+
+@tf.custom_gradient
+def gather(x, I):
+	y = tf.gather_nd(x, I)
+	def grad(dy):
+		return tf.scatter_nd(I, dy, tf.shape(x)), None
+	return y, grad
+
+@tf.custom_gradient
+def scatter(x, I):
+	y = tf.scatter_nd(I, x, tf.shape(x))
+	def grad(dy):
+		return tf.gather_nd(dy, I), None
+	return y, grad
 
 class Distiller(Layer):
 	def __init__(
@@ -48,99 +88,36 @@ class Distiller(Layer):
 			Y += distiller(X)
 		return Y
 
-class BeamConv1D(Layer):
+class PermutedConv2D(Conv2D):
+	def call(self, X, I, Inv):
+		Y = permuted_conv(X, self.kernel, self.bias, I, Inv)
+		Y = self.activation(Y) if self.activation else Y
+		return Y
+
+class IndexConv2D(Layer):
 	def __init__(
 			self,
 			filters,
 			kernel_size=3,
 			dims=3,
 			name=None,
-			merge=True,
+			aggregator=Add(),
 			**kwargs
 		):
 		super().__init__(name=name)
-		self.merge = merge
-		self.pre = [Conv1D(
+		self.aggregator = aggregator
+		self.convs = [PermutedConv2D(
 			filters,
 			kernel_size,
 			**kwargs
 		) for _ in range(dims)]
-		if self.merge:
-			self.post = [Conv1D(
-				filters,
-				kernel_size,
-				**kwargs
-			) for _ in range(dims)]
 		pass
 
-	def call(self, X, index, inv, **kwargs):
-		Y = 0
-		if self.merge:
-			for i, pre, post in zip(range(len(index)), self.pre, self.post):
-				V = inv[i]
-				I = index[i]
-				x = tf.nn.gather(X, V)
-				n = tf.reduce_max(I) + 1
-				x = pre(x[None,...], **kwargs)[0]
-				x = tf.math.unsorted_segment_sum(x, I, n)
-				x = post(x[None,...], **kwargs)[0]
-				x = tf.nn.gather(x, I)
-				Y += x
-		else:
-			for i, pre in zip(range(len(inv)), self.pre):
-				V = inv[i]
-				x = tf.gather(X, V)
-				x = pre(x[None,...], **kwargs)[0]
-				x = tf.scatter_nd(V[...,None], x, tf.shape(x))
-				Y += x
-		return Y
-
-
-class BeamConv2D(Layer):
-	def __init__(
-			self,
-			filters,
-			kernel_size=3,
-			dims=3,
-			name=None,
-			merge=True,
-			**kwargs
-		):
-		super().__init__(name=name)
-		self.merge = merge
-		self.pre = [Conv2D(
-			filters,
-			kernel_size,
-			activation='relu',
-			**kwargs
-		) for _ in range(dims)]
-		if self.merge:
-			self.post = [Conv2D(
-				filters,
-				(kernel_size, 1),
-				activation='relu',
-				**kwargs
-			) for _ in range(dims)]
-		pass
-
-	def call(self, X, index, inv, **kwargs):
-		Y = 0
-		if self.merge:
-			for i, pre, post in zip(range(len(index)), self.pre, self.post):
-				V = inv[i, ..., None]
-				x = tf.gather_nd(X, V)
-				I = index[i]
-				n = tf.reduce_max(I) + 1
-				x = pre(x[None,...], **kwargs)[0]
-				x = tf.math.unsorted_segment_sum(x, I, n)
-				x = post(x[None,...], **kwargs)[0]
-				x = tf.gather(x, I)
-				Y += x
-		else:
-			for i, pre in zip(range(len(inv)), self.pre):
-				V = inv[i, ..., None]
-				x = tf.gather_nd(X, V)
-				x = pre(x[None,...], **kwargs)[0]
-				x = tf.tensor_scatter_nd_update(x, V, x)
-				Y += x
-		return Y
+	def call(self, X, index, inverse, **kwargs):
+		Y = []
+		for i, conv in zip(range(len(index)), self.convs):
+			I = index[i]
+			Inv = inverse[i]
+			x = conv(X, I, Inv)
+			Y.append(x)
+		return self.aggregator(Y)
