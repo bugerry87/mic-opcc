@@ -39,6 +39,13 @@ def init_main_args(parents=[]):
 		)
 	
 	main_args.add_argument(
+		'--name',
+		metavar='STR',
+		default='mic-opcc',
+		help='Name of the model (default=mic-opcc)'
+		)
+	
+	main_args.add_argument(
 		'--train_index', '-X',
 		metavar='PATH',
 		nargs='*',
@@ -406,6 +413,7 @@ def init_main_args(parents=[]):
 
 
 def main(
+	name='mic-opcc',
 	train_index=None,
 	val_index=None,
 	test_index=None,
@@ -467,7 +475,7 @@ def main(
 	tf.random.set_seed(seed)
 	timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 	log_dir = os.path.join(log_dir, timestamp)
-	log_model = os.path.join(log_dir, "ckpts", "mic_opcc_{epoch:04d}-{loss:.3f}.weights.h5")
+	log_model = os.path.join(log_dir, "ckpts", name + "_{epoch:04d}-{loss:.3f}.weights.h5")
 	log_output = os.path.join(log_dir, timestamp + '.log')
 	log_data = os.path.join(log_dir, 'test')
 	os.makedirs(os.path.join(log_dir, "ckpts"), exist_ok=True)
@@ -487,6 +495,7 @@ def main(
 		model = tf.keras.models.load_model(checkpoint)
 	else:
 		model = MultiIndexedBeamConvPCC(
+			name=name,
 			kernels=kernels,
 			convolutions=convolutions,
 			neck_length=head_size,

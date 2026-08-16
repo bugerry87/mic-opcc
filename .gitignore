@@ -160,4 +160,6 @@ media/
 *.vscode/
 
 #samples
+*.bin
+*.ply
 !samples/000000.bin
