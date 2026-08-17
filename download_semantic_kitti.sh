@@ -1,5 +1,5 @@
 #!/bin/sh
-DATA=${$1:-"./data/semantic-kitti"}
+DATA=${$1:-"./data/kitti"}
 
 if [ ! -d "$DATA" ]; then
     mkdir -p $DATA

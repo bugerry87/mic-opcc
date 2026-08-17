@@ -104,10 +104,10 @@ This project was designed and tested for the following 3 datasets:
 
 ### Semantic KITTI
 
-Download and extract the [Semantic KITTI](https://semantic-kitti.org/) dataset to `./data/semantic-kitti/`.
+Download and extract the [Semantic KITTI](https://semantic-kitti.org/) dataset to `./data/kitti/`.
 
 ```bash
-sh download_semantic_kitti.sh ./data/semantic-kitti/
+sh download_semantic_kitti.sh ./data/kitti/
 ```
 
 **Note:** You may choose another destination path, but then mind to adjust the paths in `./samples/kitti_train_index.txt` and `./samples/kitti_test_index.txt`.
