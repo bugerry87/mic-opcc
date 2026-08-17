@@ -7,9 +7,9 @@ if [ $DOCKER ]; then;
     if [ ! -d "$LOGS" ]; then
         mkdir -p $LOGS
     fi
-    docker container rm mic-opcc
+    docker container rm mic-mini
     docker run \
-        --name mic-opcc \
+        --name mic-mini \
         --gpus "device=$CUDA_VISIBLE_DEVICES" \
         --mount type=bind,src=$LOGS,dst=/home/mic-opcc/logs \
         ivslab/mic-opcc \

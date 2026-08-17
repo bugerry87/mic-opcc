@@ -196,7 +196,7 @@ options:
   --generate FLOAT      Generate a confidence point cloud at the end (default=0.0)
 ```
 
-### Run a Toy Example
+## Run a Toy Example
 
 Run a Toy Example on `mini_index.txt` that contains one single point cloud sample and test the compression result on the very same sample.
 This command starts a training session of 1 epochs with 10 iterations each at a quantization precision of 12bits per dimension.
@@ -220,7 +220,7 @@ We provide several methods to run this project:
 python ./run_mic_pcc.py -X ./samples/mini_index.txt -T ./samples/mini_index.txt -P 12 -e 1 --steps_per_epoch 10 -S 0 4 8 12 -c 4 8 12 -n 1 2 3 --range_coder=nrc --cpu
 ```
 
-Or use one of our helper scripts that already predefine a certain set of hyper-parameters.
+Or use one of our helper scripts that already pre-define a certain set of hyper-parameters.
 Any parameters can be overrided by simply tailing them behind the script.
 
 **Run locally by helper script:**
@@ -237,12 +237,73 @@ To run the same process in a docker container, set the environment variable `DOC
 DOCKER=1 sh ./train_mic_mini.sh "[override parameters here]"
 ```
 
-### Run Semantic KITTI Training from Checkpoint
+## Run Proposed Models
+
+For each epoch the model stores an `.h5` file of weights as a checkpoint to the default path in `./logs`.
+The checkpoint doesn't store any hyper-parameters.
+One has to reproduce all hyper-parameters in the command line to restore the exact same model.
+The checkpoints gets rejected if its weights do not fit into the generated model.
+Please check the console output for warnings in this matter.
+
+### Run MIC-OPCC on Semantic KITTI from Checkpoint
+
+To continue a training session from checkpoint, simple load the weights to `--checkpoint`:
 
 ```bash
-DOCKER=1 sh train_mic_kitti.sh --checkpoint ./logs/kitti/20260708/ckpts/kitti_0001-0.111.weights.h5
+DOCKER=1 sh train_mic_kitti.sh --checkpoint ./logs/mic-opcc-kitti/ckpts/kitti_0007-0.343.weights.h5
 ```
 
+You may download and extract a pre-trained model from [here](https://drive.google.com/file/d/1bdlrwOwI51HyfVMTxBG5CpPeFJAFxGOo/view?usp=drive_link).
+In this example, we store the checkpoint to our default path `./logs`.
+That checkpoint match with the pre-defined hyper-parameters in `train_mic_kitti.sh`.
+
+To run a test session only, just nullify the training samples in `-X`: 
+
+```bash
+DOCKER=1 sh train_mic_kitti.sh -X "" --checkpoint ./logs/mic-opcc-kitti/ckpts/kitti_0007-0.343.weights.h5
+```
+
+### Run MIC-OPCC on MPEG's 8iVFBv2 from Checkpoint
+
+To continue a training session from checkpoint, simple load the weights to `--checkpoint`:
+
+```bash
+DOCKER=1 sh train_mic_mpeg.sh --checkpoint ./logs/mic-opcc-mpeg/ckpts/mpeg_0009-0.144.weights.h5
+```
+
+You may download and extract a pre-trained model from [here](https://drive.google.com/file/d/1Hms26PvDc3f2HaR93xDylCwFKErgLyms/view?usp=drive_link).
+In this example, we store the checkpoint to our default path `./logs`.
+That checkpoint match with the pre-defined hyper-parameters in `train_mic_mpeg.sh`.
+
+To run a test session only, just nullify the training samples in `-X`: 
+
+```bash
+DOCKER=1 sh train_mic_mpeg.sh -X "" --checkpoint ./logs/mic-opcc-mpeg/ckpts/mpeg_0009-0.144.weights.h5
+```
+
+### Run MIC-OPCC on Microsoft's MVUB from Checkpoint
+
+To continue a training session from checkpoint, simple load the weights to `--checkpoint`:
+
+```bash
+DOCKER=1 sh train_mic_mvub.sh --checkpoint ./logs/mic-opcc-mpeg/ckpts/mvub_0009-0.144.weights.h5
+```
+
+You may download and extract a pre-trained model from [here](https://drive.google.com/file/d/16IXjyA9If7ChkpoiE9TcxmXK0V6Pppr6/view?usp=drive_link).
+In this example, we store the checkpoint to our default path `./logs`.
+That checkpoint match with the pre-defined hyper-parameters in `train_mic_mvub.sh`.
+
+To run a test session only, just nullify the training samples in `-X`: 
+
+```bash
+DOCKER=1 sh train_mic_mvub.sh -X "" --checkpoint ./logs/mic-opcc-mvub/ckpts/mpeg_0009-0.144.weights.h5
+```
+
+**Trouble Shooting**
+
+- Make sure, the dataset is downloaded and extracted.
+- If you changed the location of the dataset, please adjust the `_index.txt` files accordingly.
+- Using different hyper-parameters, requires new training from scratch.
 
 ## TODO's
 

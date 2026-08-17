@@ -11,9 +11,9 @@ if [ $DOCKER ]; then;
     if [ ! -d "$LOGS" ]; then
         mkdir -p $LOGS
     fi
-    docker container rm mic-opcc
+    docker container rm mic-kitti
     docker run \
-        --name mic-opcc \
+        --name mic-kitti \
         --gpus "device=$CUDA_VISIBLE_DEVICES" \
         --mount type=bind,src=$DATA,dst=/home/mic-opcc/data \
         --mount type=bind,src=$LOGS,dst=/home/mic-opcc/logs \
@@ -21,7 +21,7 @@ if [ $DOCKER ]; then;
         --name mic-kitti \
         -X ./samples/kitti_train_index.txt \
         -T ./samples/kitti_test_index.txt \
-        -c 3 6 9 12 -P 12 -S 0 3 6 9 12 -k 64 96 128 96 -w 3 5 7 9 -E 16 -n 0 \
+        -e 10 -c 3 6 9 12 -P 12 -S 0 3 6 9 12 -k 64 96 128 96 -w 3 5 7 9 -E 16 -n 0 \
         --chunk 1 --range_coder=tfc --qmode=cornered --rotate=z --derotate --grouping=sequential \
         $@
 else
@@ -29,7 +29,7 @@ else
         --name mic-kitti \
         -X ./samples/kitti_train_index.txt \
         -T ./samples/kitti_test_index.txt \
-        -c 3 6 9 12 -P 12 -S 0 3 6 9 12 -k 64 96 128 96 -w 3 5 7 9 -E 16 -n 0 \
+        -e 10 -c 3 6 9 12 -P 12 -S 0 3 6 9 12 -k 64 96 128 96 -w 3 5 7 9 -E 16 -n 0 \
         --chunk 1 --range_coder=tfc --qmode=cornered --rotate=z --derotate --grouping=sequential \
         $@
 fi
