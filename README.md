@@ -72,7 +72,8 @@ Either, use this command:
 
 ```bash
 conda activate mic-opcc
-echo 'export LD_LIBRARY_PATH="$CONDA_PREFIX/lib"' >> "$CONDA_PREFIX/etc/conda/activate.d/libglib_activate.sh"
+echo 'export LD_LIBRARY_PATH="$CONDA_PREFIX/lib"' \
+  >> "$CONDA_PREFIX/etc/conda/activate.d/libglib_activate.sh"
 ```
 
 Or detect that file and modify it manually.
@@ -230,7 +231,11 @@ We provide several methods to run this project:
 **Run locally by direct command:**
 
 ```bash
-python ./run_mic_pcc.py -X ./samples/mini_index.txt -T ./samples/mini_index.txt -P 12 -e 1 --steps_per_epoch 10 -S 0 4 8 12 -c 4 8 12 -n 1 2 3 --range_coder=nrc --cpu
+python ./run_mic_pcc.py \
+  -X ./samples/mini_index.txt \
+  -T ./samples/mini_index.txt \
+  -P 12 -S 0 4 8 12 -c 4 8 12 -n 1 2 3 \
+  -e 1 --steps_per_epoch 10 --range_coder=nrc --cpu
 ```
 
 Or use one of our helper scripts that already pre-define a certain set of hyper-parameters.
@@ -263,7 +268,8 @@ Please check the console output for warnings in this matter.
 To continue a training session from checkpoint, simple load the weights to `--checkpoint`:
 
 ```bash
-DOCKER=1 sh train_mic_kitti.sh --checkpoint ./logs/mic-opcc-kitti/ckpts/kitti_0007-0.343.weights.h5
+DOCKER=1 sh train_mic_kitti.sh \
+  --checkpoint ./logs/mic-opcc-kitti/ckpts/kitti_0007-0.343.weights.h5
 ```
 
 You may download and extract a pre-trained model from [here](https://drive.google.com/file/d/1bdlrwOwI51HyfVMTxBG5CpPeFJAFxGOo/view?usp=drive_link).
@@ -273,7 +279,8 @@ That checkpoint match with the pre-defined hyper-parameters in `train_mic_kitti.
 To run a test session only, just nullify the training samples in `-X`: 
 
 ```bash
-DOCKER=1 sh train_mic_kitti.sh -X "" --checkpoint ./logs/mic-opcc-kitti/ckpts/kitti_0007-0.343.weights.h5
+DOCKER=1 sh train_mic_kitti.sh -X "" \
+  --checkpoint ./logs/mic-opcc-kitti/ckpts/kitti_0007-0.343.weights.h5
 ```
 
 ### Run MIC-OPCC on MPEG's 8iVFBv2 from Checkpoint
@@ -281,7 +288,8 @@ DOCKER=1 sh train_mic_kitti.sh -X "" --checkpoint ./logs/mic-opcc-kitti/ckpts/ki
 To continue a training session from checkpoint, simple load the weights to `--checkpoint`:
 
 ```bash
-DOCKER=1 sh train_mic_mpeg.sh --checkpoint ./logs/mic-opcc-mpeg/ckpts/mpeg_0009-0.144.weights.h5
+DOCKER=1 sh train_mic_mpeg.sh \
+  --checkpoint ./logs/mic-opcc-mpeg/ckpts/mpeg_0009-0.144.weights.h5
 ```
 
 You may download and extract a pre-trained model from [here](https://drive.google.com/file/d/1Hms26PvDc3f2HaR93xDylCwFKErgLyms/view?usp=drive_link).
@@ -291,7 +299,8 @@ That checkpoint match with the pre-defined hyper-parameters in `train_mic_mpeg.s
 To run a test session only, just nullify the training samples in `-X`: 
 
 ```bash
-DOCKER=1 sh train_mic_mpeg.sh -X "" --checkpoint ./logs/mic-opcc-mpeg/ckpts/mpeg_0009-0.144.weights.h5
+DOCKER=1 sh train_mic_mpeg.sh -X "" \
+  --checkpoint ./logs/mic-opcc-mpeg/ckpts/mpeg_0009-0.144.weights.h5
 ```
 
 ### Run MIC-OPCC on Microsoft's MVUB from Checkpoint
@@ -299,7 +308,8 @@ DOCKER=1 sh train_mic_mpeg.sh -X "" --checkpoint ./logs/mic-opcc-mpeg/ckpts/mpeg
 To continue a training session from checkpoint, simple load the weights to `--checkpoint`:
 
 ```bash
-DOCKER=1 sh train_mic_mvub.sh --checkpoint ./logs/mic-opcc-mpeg/ckpts/mvub_0009-0.144.weights.h5
+DOCKER=1 sh train_mic_mvub.sh \
+  --checkpoint ./logs/mic-opcc-mpeg/ckpts/mvub_0009-0.144.weights.h5
 ```
 
 You may download and extract a pre-trained model from [here](https://drive.google.com/file/d/16IXjyA9If7ChkpoiE9TcxmXK0V6Pppr6/view?usp=drive_link).
@@ -309,7 +319,8 @@ That checkpoint match with the pre-defined hyper-parameters in `train_mic_mvub.s
 To run a test session only, just nullify the training samples in `-X`: 
 
 ```bash
-DOCKER=1 sh train_mic_mvub.sh -X "" --checkpoint ./logs/mic-opcc-mvub/ckpts/mpeg_0009-0.144.weights.h5
+DOCKER=1 sh train_mic_mvub.sh -X "" \
+  --checkpoint ./logs/mic-opcc-mvub/ckpts/mpeg_0009-0.144.weights.h5
 ```
 
 ## Trouble Shooting
@@ -344,13 +355,12 @@ and Sheng, Bin
 and Kim, Jinman
 and Thalmann, Daniel
 and Magnenat-Thalmann, Nadia",
-title="Methodology and Results of MIC-OPCC: Multi-Indexed Convolution Model for Octree Point Cloud Compression",
+title="Methodology and Results of {MIC-OPCC}: Multi-Indexed Convolution Model for Octree Point Cloud Compression",
 booktitle="Advances in Computer Graphics",
 year="2026",
 publisher="Springer Nature Switzerland",
 address="Cham",
 pages="443--454",
-abstract="For point cloud compression, capturing sufficient spatial context is crucial for accurately modeling the point cloud distribution. However, voxel-based methods tend to lose effectiveness when dealing with sparse point clouds of higher precision, as the context they gather becomes less comprehensive. This study introduces an octree-based point cloud compression method that utilizes an entropy model powered by deep learning to estimate probabilities, which are then used to guide an Arithmetic Range Coder in reducing the bit rate of the serialized octree code. Our proposed model extracts local features using lightweight 1D convolution applied in varied ordering and analyzes causal relationships by optimizing the cross-entropy. This approach efficiently replaces the voxel-convolution techniques and attention models used in previous works, providing significant improvements in both time and memory consumption. The effectiveness of our model is demonstrated on three datasets, where it outperforms recent deep learning-based compression models in this field. This project can be found at https://github.com/bugerry87/mic-opcc.",
 isbn="978-3-032-22264-0"
 }
 ```
@@ -370,7 +380,6 @@ NUMBER = {4},
 ARTICLE-NUMBER = {1287},
 URL = {https://www.mdpi.com/1424-8220/26/4/1287},
 ISSN = {1424-8220},
-ABSTRACT = {This study introduces a hybrid point cloud compression method that transfers from octree-nodes to voxel occupancy estimation to find its lower-bound bitrate by using a Binary Arithmetic Range Coder. In previous attempts, we demonstrated that our entropy compression model based on index convolution achieves promising performance while maintaining low complexity. However, our previous model lacks an autoregressive approach, which is apparently indispensable to compete with the current state-of-the-art of compression performance. Therefore, we adapt an autoregressive grouping method that iteratively populates, explores, and estimates the occupancy of 1-bit voxel candidates in a more discrete fashion. Furthermore, we refactored our backbone architecture by adding a distiller layer on each convolution, forcing every hidden feature to contribute to the final output. Our proposed model extracts local features using lightweight 1D convolution applied in varied ordering and analyzes causal relationships by optimizing the cross-entropy. This approach efficiently replaces the voxel convolution techniques and attention models used in previous works, providing significant improvements in both time and memory consumption. The effectiveness of our model is demonstrated on three datasets, where it outperforms recent deep learning-based compression models in this field.},
 DOI = {10.3390/s26041287}
 }
 ```
