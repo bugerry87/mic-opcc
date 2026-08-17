@@ -26,6 +26,19 @@ python-pcl==0.3.0rc1           # for loading .ply files
 
 This project can be run locally or in a docker container with GPU support.
 
+After you've checked out this project via:
+
+```bash
+git clone https://github.com/bugerry87/mic-opcc.git
+```
+
+You may wish to change permissions on all shell scripts to make them executable, by:
+
+```bash
+cd ./mic-opcc
+chmod +x *.sh
+```
+
 ### Local Installation
 
 For running this project locally, we recommend using [Anaconda](https://www.anaconda.com/download) or similar to set up the basic environment.
@@ -299,7 +312,7 @@ To run a test session only, just nullify the training samples in `-X`:
 DOCKER=1 sh train_mic_mvub.sh -X "" --checkpoint ./logs/mic-opcc-mvub/ckpts/mpeg_0009-0.144.weights.h5
 ```
 
-**Trouble Shooting**
+## Trouble Shooting
 
 - Make sure, the dataset is downloaded and extracted.
 - If you changed the location of the dataset, please adjust the `_index.txt` files accordingly.

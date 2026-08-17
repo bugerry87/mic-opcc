@@ -1,4 +1,4 @@
-FROM tensorflow/tensorflow:2.9.3-gpu AS mic-opcc
+FROM tensorflow/tensorflow:2.9.0-gpu AS mic-opcc
 
 WORKDIR /home/mic-opcc
 
@@ -8,7 +8,7 @@ RUN pip install \
 keras==2.9.0 \
 numba==0.58.1 \
 scipy==1.10.1 \
-python-pcl==0.3.0rc1 \
+python-pcl \
 tensorflow-probability==0.15.0 \
 tensorflow-compression==2.9.2
 

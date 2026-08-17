@@ -1,6 +1,6 @@
 #!/bin/sh
-$DOCKER=${DOCKER:-0}
-if [ $DOCKER ]; then;
+DOCKER=${DOCKER:-0}
+if [ "$DOCKER" -gt 0 ]; then
     CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
     LOGS=${LOGS:-"./logs"}
 
