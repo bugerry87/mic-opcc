@@ -6,5 +6,5 @@ if [ ! -d "$DATA" ]; then
 fi
 
 cd $DATA
-wget https://s3.eu-central-1.amazonaws.com/avg-kitti/data_odometry_velodyne.zip -o ./
+wget https://s3.eu-central-1.amazonaws.com/avg-kitti/data_odometry_velodyne.zip
 unzip data_odometry_velodyne.zip 
